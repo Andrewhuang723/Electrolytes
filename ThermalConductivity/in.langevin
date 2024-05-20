@@ -1,0 +1,119 @@
+# sample LAMMPS input script for thermal conductivity of liquid LJ
+# thermostatting 2 regions via fix langevin
+
+# settings
+
+# variable        x equal 10
+# variable        y equal 10
+# variable        z equal 20
+
+variable        rho equal 1.20
+variable        t equal 298
+variable        rc equal 2.5
+variable        tlo equal 273
+variable        thi equal 373
+
+#variable       rho equal 0.85
+#variable        t equal 0.7
+#variable       rc equal 3.0
+#variable        tlo equal 0.3
+#variable        thi equal 1.0
+
+# setup problem
+
+boundary p p p
+units real
+atom_style full
+bond_style harmonic
+angle_style harmonic
+dihedral_style opls
+improper_style harmonic
+pair_style lj/cut/coul/long 12
+kspace_style pppm 1e-4
+# neighbor        0.3 bin
+neigh_modify	delay 0 every 1
+
+read_data       ../Diffuse/T8/AddSalts/system.data
+
+velocity        all create $t 87287
+
+# pair_style      lj/cut ${rc}
+# pair_coeff      1 1 1.0 1.0
+
+# heat layers
+
+region          hot block INF INF INF INF -25 -20
+region          cold block  INF INF INF INF 20 25
+group           hotwall region hot
+group           coldwall region cold
+compute         Thot all temp/region hot
+compute         Tcold all temp/region cold
+
+# 1st equilibration run
+dump            equilibration1 all atom 1000 equilibration1.lammpstrj
+# minimize        1.0e-4 1.0e-6 1000 100
+timestep        0.1
+
+fix             1 all nvt temp $t $t 100
+thermo          100
+thermo_style    custom step temp ke press etotal c_Thot c_Tcold
+run             1000
+
+velocity        all scale $t
+
+unfix           1
+
+# 2nd equilibration run
+
+fix             1 all nve
+fix             hot all langevin ${thi} ${thi} 100 59804 tally yes
+fix             cold all langevin ${tlo} ${tlo} 100 287859 tally yes
+fix_modify      hot temp Thot
+fix_modify      cold temp Tcold
+
+dump            equilibration2 all atom 1000 equilibration2.lammpstrj
+# minimize        1.0e-4 1.0e-6 1000 100
+timestep        0.1
+
+variable        tdiff equal c_Thot-c_Tcold
+thermo_style    custom step temp c_Thot c_Tcold f_hot f_cold v_tdiff
+thermo_modify   colname c_Thot Temp_hot colname c_Tcold Temp_cold &
+                colname f_hot E_hot colname f_cold E_cold &
+                colname v_tdiff dTemp_step
+thermo          1000
+run             10000
+
+# thermal conductivity calculation
+# reset langevin thermostats to zero energy accumulation
+
+compute         ke all ke/atom
+variable        temp atom c_ke/1.5
+
+fix             hot all langevin ${thi} ${thi} 100 59804 tally yes
+fix             cold all langevin ${tlo} ${tlo} 100 287859 tally yes
+fix_modify      hot temp Thot
+fix_modify      cold temp Tcold
+
+fix             ave all ave/time 10 100 1000 v_tdiff ave running
+thermo_style    custom step temp c_Thot c_Tcold f_hot f_cold v_tdiff f_ave lx ly lz
+thermo_modify   colname c_Thot Temp_hot colname c_Tcold Temp_cold &
+                colname f_hot E_hot colname f_cold E_cold &
+                colname v_tdiff dTemp_step colname f_ave dTemp
+
+compute         layers all chunk/atom bin/1d z lower 0.05 units reduced
+fix             2 all ave/chunk 10 100 1000 layers v_temp file profile.langevin
+
+dump            langevin all atom 1000 langevin.lammpstrj
+# minimize        1.0e-4 1.0e-6 1000 100
+timestep        0.1
+
+variable        start_time equal time
+variable        delta_time equal time-${start_time}
+variable        kappa equal (0.5*(abs(f_hot)+abs(f_cold))/(time-${start_time})/(lx*ly)/2.0)*(lz/2.0)/f_ave
+
+
+run             20000
+print           "Delta_time: $(v_delta_time)"
+print           "E_hot: $(f_hot) || E_cold: $(f_cold)"
+print           "dTemp: $(f_ave)"
+print           "Running average thermal conductivity: $(v_kappa)"

@@ -1,0 +1,67 @@
+boundary p p p
+units real
+atom_style full
+bond_style harmonic
+angle_style harmonic
+dihedral_style opls
+improper_style harmonic
+pair_style lj/cut/coul/long 11.0 11.0
+pair_modify mix geometric
+special_bonds lj/coul 0.0 0.0 0.5
+kspace_style pppm 1e-3
+
+region box block -30 30 -30 30 -30 30
+create_box 909 box &
+bond/types 388 &
+angle/types 1030 &
+dihedral/types 811 &
+improper/types 6 &
+extra/bond/per/atom 1000 &
+extra/angle/per/atom 2000 &
+extra/dihedral/per/atom 1000 &
+extra/improper/per/atom 1000 &
+extra/special/per/atom 400
+
+
+
+include ../../../PARM_AFTER.lammps
+
+# Create EC molecules
+molecule ecmol ../../../EC/molecule.txt
+create_atoms 0 random 591 12345 NULL mol &
+ecmol 13245 overlap 1 maxtry 50
+
+# Create PC molecules
+molecule pcmol ../../../PC/molecule.txt
+create_atoms 0 random 48 23451 NULL mol &
+pcmol 24351 overlap 1 maxtry 50
+
+# Create EMC molecules
+molecule emcmol ../../../EMC/molecule.txt
+create_atoms 0 random 469 34512 NULL mol &
+emcmol 35412 overlap 1 maxtry 50
+
+# Create DMC molecules
+molecule dmcmol ../../../DMC/molecule.txt
+create_atoms 0 random 632 45123 NULL mol &
+dmcmol 41523 overlap 1 maxtry 50
+
+# Create VC molecules
+molecule vcmol ../../../VC/molecule.txt
+create_atoms 0 random 38 76543 NULL mol &
+vcmol 75643 overlap 1 maxtry 50
+
+# Create DTD molecules
+molecule dtdmol ../../../DTD/molecule.txt
+create_atoms 0 random 20 67543 NULL mol &
+dtdmol 65743 overlap 1 maxtry 50
+
+
+# minimzation
+minimize 1.0e-4 1.0e-6 1000 100
+
+## Run
+run 0
+
+write_data system.data
+write_dump all atom dump.lammpstrj
